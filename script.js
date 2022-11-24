@@ -178,6 +178,9 @@ const addCSS = () => {
     .suggested-users:hover {
       background-color: rgb(247,249,249);
     }
+    .suggested-topics:hover {
+      background-color: rgb(247,249,249);
+    }
     .suggested-users.text-container {
       cursor:default;
       background-color: transparent;
@@ -187,6 +190,9 @@ const addCSS = () => {
       justify-content: center;
     }
     .suggested-users.selected {
+      background-color: rgb(247,249,249);
+    }
+    .suggested-topics.selected {
       background-color: rgb(247,249,249);
     }
     .avatar {
@@ -223,7 +229,7 @@ let CURRENT_QUERY = '';
 
 let TIMEOUT = undefined;
 
-let SELECTED_HANDLE_NAME = '';
+let SELECTED = '';
 
 let SUGGESTIONS = [];
 
@@ -254,11 +260,19 @@ const showAdvancedQuery = (target) => {
   target.parentElement.prepend(span);
 };
 
+const setQuery = (value) => {
+  const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
+  document.querySelector('[data-testid=clearButton]').click();
+  search.value = value;
+  showNative();
+  search.focus();
+};
+
 const setAdvancedQuery = (value) => {
   const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
   IS_ADVANCED_MODE = true;
-  search.focus();
   let p = document.createElement('p');
+  p.classList.add('advanced-query');
   p.style.color = 'white';
   p.style.background = 'gray';
   p.style.padding = '5px';
@@ -268,10 +282,9 @@ const setAdvancedQuery = (value) => {
   p.style.borderRadius = '5px';
   p.innerHTML = `${CURRENT_QUERY}${value}`;
   search.parentElement.prepend(p);
-  setTimeout(() => {
-    document.querySelector('[data-testid=clearButton]').click();
-    showNative();
-  });
+  document.querySelector('[data-testid=clearButton]').click();
+  showNative();
+  search.focus();
 };
 
 const showText = (text, handleClick) => {
@@ -299,7 +312,7 @@ const showUsers = (suggestions) => {
   suggestions.forEach((suggestion) => {
     const container = document.createElement('div');
     container.classList.add('suggested-users');
-    if (suggestion.handleName === SELECTED_HANDLE_NAME) container.classList.add('selected');
+    if (suggestion.handleName === SELECTED) container.classList.add('selected');
 
     const avatar = document.createElement('img');
     avatar.classList.add('avatar');
@@ -325,8 +338,12 @@ const showUsers = (suggestions) => {
     textContainer.appendChild(bio);
 
     container.appendChild(textContainer);
-    container.addEventListener('click', () => {
+    container.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       setAdvancedQuery(suggestion.handleName);
+      SELECTED = '';
+      SUGGESTIONS = [];
     });
 
     dropdown.appendChild(container);
@@ -334,7 +351,7 @@ const showUsers = (suggestions) => {
 };
 
 const showTopics = (topics) => {
-  document.querySelectorAll('.suggested-users').forEach((e) => e.remove());
+  document.querySelectorAll('.suggested-topics').forEach((e) => e.remove());
 
   const dropdown = document.querySelector('div[id^=typeaheadDropdown-]');
 
@@ -342,6 +359,8 @@ const showTopics = (topics) => {
 
   topics.forEach((topic) => {
     const container = document.createElement('div');
+    container.classList.add('suggested-topics');
+    if (topic.topic === SELECTED) container.classList.add('selected');
     container.style.display = 'flex';
     container.style.alignItems = 'center';
     container.style.paddingBottom = '12px';
@@ -382,9 +401,9 @@ const showTopics = (topics) => {
     textContainer.appendChild(name);
 
     container.appendChild(textContainer);
-//    container.addEventListener('click', () => {
-//      setAdvancedQuery(suggestion.handleName);
-//    });
+    container.addEventListener('click', () => {
+      setQuery(topic.topic);
+    });
 
     dropdown.appendChild(container);
   });
@@ -419,17 +438,17 @@ const handleChange = (event) => {
   if (IS_ADVANCED_MODE) {
     hideNative();
     if (text === '') {
-      //showAdvancedText('Type a topic');
+      // DO NOTHING
     } else {
       if (TIMEOUT) clearTimeout(TIMEOUT);
       TIMEOUT = setTimeout(() => {
         getTypeAheadTopics(text).then((resp) => {
           const json = JSON.parse(resp);
-          console.log(json);
           if (json.topics.length == 0) {
-            //showAdvancedText('No topics found')
+            // DO NOTHING
           } else {
-            showTopics(json.topics);
+            SUGGESTIONS = json.topics;
+            showTopics(SUGGESTIONS);
           }
         });
       }, 200);
@@ -475,25 +494,53 @@ const handleChange = (event) => {
 const handleKeyDown = (event) => {
   const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
   const suggestions = ADVANCED_QUERIES.suggest(event.target.value);
+
+  if (event.keyCode == '13') { // enter
+    event.preventDefault();
+    event.stopPropagation();
+    if (SELECTED) {
+      if (IS_ADVANCED_MODE) setQuery(SELECTED);
+      else setAdvancedQuery(SELECTED);
+      SELECTED = '';
+      SUGGESTIONS = [];
+    } else {
+      const queries = [...document.querySelectorAll('.advanced-query')].map((e) => e.textContent );
+      window.open(`https://twitter.com/search?q=${queries.join(' ')} ${search.value}&src=typed_query&f=top`, '_self');
+    }
+    return;
+  }
+
   if (SUGGESTIONS.length) {
     if (event.keyCode == '38') { // up
       let newIndex = SUGGESTIONS.length - 1;
-      const selectedIndex = SUGGESTIONS.findIndex((s) => s.handleName === SELECTED_HANDLE_NAME);
+      const selectedIndex = SUGGESTIONS.findIndex((s) => {
+        if (IS_ADVANCED_MODE)
+          return s.topic === SELECTED
+        return s.handleName === SELECTED
+      });
       if (selectedIndex > 0) newIndex = selectedIndex - 1;
-      SELECTED_HANDLE_NAME = SUGGESTIONS[newIndex].handleName;
-      showUsers(SUGGESTIONS);
+      if (IS_ADVANCED_MODE) {
+        SELECTED = SUGGESTIONS[newIndex].topic;
+        showTopics(SUGGESTIONS);
+      } else {
+        SELECTED = SUGGESTIONS[newIndex].handleName;
+        showUsers(SUGGESTIONS);
+      }
     } else if (event.keyCode == '40') { // down
       let newIndex = 0;
-      const selectedIndex = SUGGESTIONS.findIndex((s) => s.handleName === SELECTED_HANDLE_NAME);
+      const selectedIndex = SUGGESTIONS.findIndex((s) => {
+        if (IS_ADVANCED_MODE)
+          return s.topic === SELECTED
+        return s.handleName === SELECTED
+      });
       if (selectedIndex < SUGGESTIONS.length - 1) newIndex = selectedIndex + 1;
-      SELECTED_HANDLE_NAME = SUGGESTIONS[newIndex].handleName;
-      showUsers(SUGGESTIONS);
-    } else if (event.keyCode == '13' && SELECTED_HANDLE_NAME) { // enter
-      event.preventDefault();
-      event.stopPropagation();
-      setAdvancedQuery(SELECTED_HANDLE_NAME);
-      SELECTED_HANDLE_NAME = '';
-      SUGGESTIONS = [];
+      if (IS_ADVANCED_MODE) {
+        SELECTED = SUGGESTIONS[newIndex].topic;
+        showTopics(SUGGESTIONS);
+      } else {
+        SELECTED = SUGGESTIONS[newIndex].handleName;
+        showUsers(SUGGESTIONS);
+      }
     }
   } else {
     if ( // backspace
@@ -526,6 +573,5 @@ const handleKeyDown = (event) => {
   addCSS();
   const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
   search.addEventListener('input', handleChange);
-  search.addEventListener('change', handleChange);
   search.addEventListener('keydown', handleKeyDown);
 })();
