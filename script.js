@@ -109,6 +109,48 @@ const getTypeAheadUsers = async (handleName) => {
   });
 };
 
+const getTypeAheadTopics = async (topic) => {
+  return new Promise((resolve, reject) => {
+    const isLoggedIn = !!getCookieByKey('auth_token');
+    const csrfToken = getCookieByKey('ct0');
+    const guestToken = getCookieByKey('gt');
+    const authorization = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+
+    const url = new URL('https://twitter.com/i/api/1.1/search/typeahead.json');
+    url.searchParams.set('include_ext_is_blue_verified', 1);
+    url.searchParams.set('q', `${topic}`);
+    url.searchParams.set('src', 'search_box');
+    url.searchParams.set('result_type', 'topics');
+
+    const xmlHttp = new XMLHttpRequest();
+    xmlHttp.open('GET', url.toString(), false);
+    xmlHttp.setRequestHeader('x-csrf-token', csrfToken);
+    xmlHttp.setRequestHeader('x-twitter-active-user', 'yes');
+    if (isLoggedIn) {
+      xmlHttp.setRequestHeader('x-twitter-auth-type', 'OAuth2Session');
+    } else {
+      xmlHttp.setRequestHeader('x-guest-token', guestToken);
+    }
+    xmlHttp.setRequestHeader('x-twitter-client-language', 'en');
+    xmlHttp.setRequestHeader('authorization', `Bearer ${authorization}`);
+
+    xmlHttp.onload = (e) => {
+      if (xmlHttp.readyState === 4) {
+        if (xmlHttp.status === 200) {
+          resolve(xmlHttp.responseText);
+        } else {
+          reject(xmlHttp.statusText);
+        }
+      }
+    };
+    xmlHttp.onerror = (e) => {
+      reject(xmlHttp.statusTexT);
+    };
+
+    xmlHttp.send(null);
+  });
+};
+
 const addCSS = () => {
   const style = document.createElement('style');
 
@@ -187,6 +229,8 @@ let SUGGESTIONS = [];
 
 let SUGGESTION_STYLE = undefined;
 
+let IS_ADVANCED_MODE = false;
+
 
 /*
  * Event handlers.
@@ -212,6 +256,7 @@ const showAdvancedQuery = (target) => {
 
 const setAdvancedQuery = (value) => {
   const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
+  IS_ADVANCED_MODE = true;
   search.focus();
   let p = document.createElement('p');
   p.style.color = 'white';
@@ -221,24 +266,6 @@ const setAdvancedQuery = (value) => {
   p.style.marginLeft = '5px';
   p.style.opacity = '0.5';
   p.style.borderRadius = '5px';
-  p.innerHTML = `${CURRENT_QUERY}${value}`;
-  search.parentElement.prepend(p);
-  setTimeout(() => {
-    document.querySelector('[data-testid=clearButton]').click();
-    showNative();
-  });
-};
-
-const unsetAdvancedQuery = (value) => {
-  const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
-  search.focus();
-  let p = document.createElement('p');
-  p.style.color = 'white';
-  p.style.background = 'gray';
-  p.style.padding = '5px';
-  p.style.marginRight = '5px';
-  p.style.marginLeft = '5px';
-  p.style.opacity = '0.5';
   p.innerHTML = `${CURRENT_QUERY}${value}`;
   search.parentElement.prepend(p);
   setTimeout(() => {
@@ -306,6 +333,63 @@ const showUsers = (suggestions) => {
   });
 };
 
+const showTopics = (topics) => {
+  document.querySelectorAll('.suggested-users').forEach((e) => e.remove());
+
+  const dropdown = document.querySelector('div[id^=typeaheadDropdown-]');
+
+  const xmlns = 'http://www.w3.org/2000/svg';
+
+  topics.forEach((topic) => {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.paddingBottom = '12px';
+    container.style.paddingTop = '12px';
+    container.style.paddingLeft = '16px';
+    container.style.paddingRight = '16px';
+    container.classList.add('suggested-topics');
+
+    const div = document.createElement('div');
+    div.style.display = 'flex';
+    div.style.width = '56px';
+    div.style.height = '56px';
+    div.style.marginRight = '12px';
+    div.style.alignItems = 'center';
+    div.style.justifyContent = 'center';
+    container.appendChild(div);
+
+    const svg = document.createElementNS(xmlns, 'svg');
+    svg.setAttribute('viewBox', '0 0 21 21');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.width = '28px';
+    svg.style.height = '28px';
+    div.appendChild(svg);
+
+    const g = document.createElementNS(xmlns, 'g');
+    svg.appendChild(g);
+
+    const path = document.createElementNS(xmlns, 'path');
+    path.setAttributeNS(null, 'd', 'M9.094 3.095c-3.314 0-6 2.686-6 6s2.686 6 6 6c1.657 0 3.155-.67 4.243-1.757 1.087-1.088 1.757-2.586 1.757-4.243 0-3.314-2.686-6-6-6zm-9 6c0-4.971 4.029-9 9-9s9 4.029 9 9c0 1.943-.617 3.744-1.664 5.215l4.475 4.474-2.122 2.122-4.474-4.475c-1.471 1.047-3.272 1.664-5.215 1.664-4.97-.001-8.999-4.03-9-9z');
+    g.appendChild(path);
+
+    const textContainer = document.createElement('div');
+    textContainer.classList.add('text-container');
+
+    const name = document.createElement('div');
+    name.classList.add('name');
+    name.appendChild(document.createTextNode(topic.topic));
+    textContainer.appendChild(name);
+
+    container.appendChild(textContainer);
+//    container.addEventListener('click', () => {
+//      setAdvancedQuery(suggestion.handleName);
+//    });
+
+    dropdown.appendChild(container);
+  });
+};
+
 const showNative = () => {
   document.querySelectorAll('.suggested-users').forEach((e) => e.remove());
   if (SUGGESTION_STYLE) {
@@ -316,7 +400,7 @@ const showNative = () => {
 };
 
 const hideNative = () => {
-  if(!SUGGESTION_STYLE) {
+  if (!SUGGESTION_STYLE) {
     const head = document.head || document.getElementsByTagName('head')[0];
     SUGGESTION_STYLE = document.createElement('style');
     head.appendChild(SUGGESTION_STYLE);
@@ -329,10 +413,31 @@ const hideNative = () => {
 };
 
 const handleChange = (event) => {
-  showAdvancedQuery(event.target);
+  const text = event.target.value;
   showNative();
 
-  const text = event.target.value;
+  if (IS_ADVANCED_MODE) {
+    hideNative();
+    if (text === '') {
+      //showAdvancedText('Type a topic');
+    } else {
+      if (TIMEOUT) clearTimeout(TIMEOUT);
+      TIMEOUT = setTimeout(() => {
+        getTypeAheadTopics(text).then((resp) => {
+          const json = JSON.parse(resp);
+          console.log(json);
+          if (json.topics.length == 0) {
+            //showAdvancedText('No topics found')
+          } else {
+            showTopics(json.topics);
+          }
+        });
+      }, 200);
+    }
+    return;
+  }
+
+  showAdvancedQuery(event.target);
   const match = (text.match(/^(from:)([^ ]*)$/) || []);
   if (!match[0]) {
     CURRENT_QUERY = '';
@@ -361,7 +466,7 @@ const handleChange = (event) => {
               isBlueTick: user.verified || user.ext_is_blue_verified,
           }});
           showUsers(SUGGESTIONS);
-        };
+        }
       });
     }, 200);
   }
@@ -397,6 +502,7 @@ const handleKeyDown = (event) => {
       [" ", ""].includes(event.target.value)
     ) {
       search.parentElement.children[search.parentElement.children.length - 2].remove();
+      if (search.parentElement.children.length === 1) IS_ADVANCED_MODE = false;
       showNative();
     } else if ( // tab
       event.keyCode == '9' &&
