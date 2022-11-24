@@ -109,25 +109,6 @@ const getTypeAheadUsers = async (handleName) => {
   });
 };
 
-const createObserver = (handleAdded, handleRemoved) => {
-  return new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.querySelector) {
-          const search = node.querySelector('input[data-testid="SearchBox_Search_Input"]');
-          if (!!search) handleAdded(search);
-        }
-      });
-      mutation.removedNodes.forEach((node) => {
-        if (node.querySelector) {
-          const search = node.querySelector('input[data-testid="SearchBox_Search_Input"]');
-          if (!!search) handleRemoved(search);
-        }
-      });
-    });
-  });
-};
-
 const addCSS = () => {
   const style = document.createElement('style');
 
@@ -196,22 +177,76 @@ const addCSS = () => {
 const ADVANCED_QUERIES = new Trie();
 ADVANCED_QUERIES.add('from:');
 
-//
+let CURRENT_QUERY = '';
+
 let TIMEOUT = undefined;
 
-//
 let SELECTED_HANDLE_NAME = '';
 
-//
 let SUGGESTIONS = [];
 
-//
 let SUGGESTION_STYLE = undefined;
 
 
 /*
  * Event handlers.
  */
+const showAdvancedQuery = (target) => {
+  document.querySelectorAll('.suggested-query').forEach((e) => { e.remove() });
+
+  const start = target.selectionStart;
+  const seg = target.value.slice(0, start);
+  const match = (seg.match(/\S+$/) || [])[0];
+  if (!match) return;
+
+  const suggestions = ADVANCED_QUERIES.suggest(match);
+  if (suggestions.length !== 1) return;
+
+  const span = document.createElement('span');
+  const newSeg = seg.replace(/\S+$/, suggestions[0]);
+  span.classList.add('suggested-query');
+  span.innerText = newSeg + target.value.slice(start);
+
+  target.parentElement.prepend(span);
+};
+
+const setAdvancedQuery = (value) => {
+  const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
+  search.focus();
+  let p = document.createElement('p');
+  p.style.color = 'white';
+  p.style.background = 'gray';
+  p.style.padding = '5px';
+  p.style.marginRight = '5px';
+  p.style.marginLeft = '5px';
+  p.style.opacity = '0.5';
+  p.style.borderRadius = '5px';
+  p.innerHTML = `${CURRENT_QUERY}${value}`;
+  search.parentElement.prepend(p);
+  setTimeout(() => {
+    document.querySelector('[data-testid=clearButton]').click();
+    showNative();
+  });
+};
+
+const unsetAdvancedQuery = (value) => {
+  const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
+  search.focus();
+  let p = document.createElement('p');
+  p.style.color = 'white';
+  p.style.background = 'gray';
+  p.style.padding = '5px';
+  p.style.marginRight = '5px';
+  p.style.marginLeft = '5px';
+  p.style.opacity = '0.5';
+  p.innerHTML = `${CURRENT_QUERY}${value}`;
+  search.parentElement.prepend(p);
+  setTimeout(() => {
+    document.querySelector('[data-testid=clearButton]').click();
+    showNative();
+  });
+};
+
 const showText = (text, handleClick) => {
   document.querySelectorAll('.suggested-users').forEach((e) => e.remove());
 
@@ -263,7 +298,9 @@ const showUsers = (suggestions) => {
     textContainer.appendChild(bio);
 
     container.appendChild(textContainer);
-//    container.addEventListener('click', () => setInputText(`from:${s.twitterHandle} `));
+    container.addEventListener('click', () => {
+      setAdvancedQuery(suggestion.handleName);
+    });
 
     dropdown.appendChild(container);
   });
@@ -275,6 +312,7 @@ const showNative = () => {
     SUGGESTION_STYLE.remove()
     SUGGESTION_STYLE = undefined;
   };
+  SUGGESTIONS = [];
 };
 
 const hideNative = () => {
@@ -290,25 +328,6 @@ const hideNative = () => {
   };
 };
 
-const showAdvancedQuery = (target) => {
-  document.querySelectorAll('.suggested-query').forEach((e) => { e.remove() });
-
-  const start = target.selectionStart;
-  const seg = target.value.slice(0, start);
-  const match = (seg.match(/\S+$/) || [])[0];
-  if (!match) return;
-
-  const suggestions = ADVANCED_QUERIES.suggest(match);
-  if (suggestions.length !== 1) return;
-
-  const span = document.createElement('span');
-  const newSeg = seg.replace(/\S+$/, suggestions[0]);
-  span.classList.add('suggested-query');
-  span.innerText = newSeg + target.value.slice(start);
-
-  target.parentElement.prepend(span);
-};
-
 const handleChange = (event) => {
   showAdvancedQuery(event.target);
   showNative();
@@ -316,10 +335,12 @@ const handleChange = (event) => {
   const text = event.target.value;
   const match = (text.match(/^(from:)([^ ]*)$/) || []);
   if (!match[0]) {
+    CURRENT_QUERY = '';
     return;
   }
 
   hideNative();
+  CURRENT_QUERY = match[1];
   const handleName = match[2];
   if (handleName === '') {
     showText('Type a user name');
@@ -332,7 +353,6 @@ const handleChange = (event) => {
           showText('No users found')
         } else {
           SUGGESTIONS = json.users.map((user) => {
-            console.log(user);
             return {
               avatarUrl: user.profile_image_url_https,
               name: user.name,
@@ -347,26 +367,46 @@ const handleChange = (event) => {
   }
 };
 
-const handleKeyDown = (e) => {
+const handleKeyDown = (event) => {
+  const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
+  const suggestions = ADVANCED_QUERIES.suggest(event.target.value);
   if (SUGGESTIONS.length) {
-    if (e.keyCode === '38') { // up
+    if (event.keyCode == '38') { // up
       let newIndex = SUGGESTIONS.length - 1;
       const selectedIndex = SUGGESTIONS.findIndex((s) => s.handleName === SELECTED_HANDLE_NAME);
       if (selectedIndex > 0) newIndex = selectedIndex - 1;
       SELECTED_HANDLE_NAME = SUGGESTIONS[newIndex].handleName;
       showUsers(SUGGESTIONS);
-    } else if (e.keyCode == '40') { // down
+    } else if (event.keyCode == '40') { // down
       let newIndex = 0;
       const selectedIndex = SUGGESTIONS.findIndex((s) => s.handleName === SELECTED_HANDLE_NAME);
       if (selectedIndex < SUGGESTIONS.length - 1) newIndex = selectedIndex + 1;
       SELECTED_HANDLE_NAME = SUGGESTIONS[newIndex].handleName;
       showUsers(SUGGESTIONS);
-    } else if (e.keyCode == '13' && SELECTED_HANDLE_NAME) { //enter
-      e.preventDefault();
-      e.stopPropagation();
-      //setInputText(`from:${selectedHandle} `);
+    } else if (event.keyCode == '13' && SELECTED_HANDLE_NAME) { // enter
+      event.preventDefault();
+      event.stopPropagation();
+      setAdvancedQuery(SELECTED_HANDLE_NAME);
       SELECTED_HANDLE_NAME = '';
       SUGGESTIONS = [];
+    }
+  } else {
+    if ( // backspace
+      event.keyCode == '8' &&
+      search.parentElement.children.length >= 2 &&
+      [" ", ""].includes(event.target.value)
+    ) {
+      search.parentElement.children[search.parentElement.children.length - 2].remove();
+      showNative();
+    } else if ( // tab
+      event.keyCode == '9' &&
+      suggestions.length === 1
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.target.value = suggestions[0];
+      hideNative();
+      showText('Type a user name');
     }
   }
 };
@@ -378,19 +418,8 @@ const handleKeyDown = (e) => {
 (function() {
   'use strict';
   addCSS();
-
-  const search = document.querySelectorAll('[data-testid=SearchBox_Search_Input]')[0];
-//  const handleAdded = (elem) => {
-    search.addEventListener('input', handleChange);
-    search.addEventListener('change', handleChange);
-    search.addEventListener('keydown', handleKeyDown);
-//  };
-
-//  const handleRemoved = (elem) => {
-//    searchEl.removeEventListener('input', onSearchChange);
-//    elem.removeEventListener('change', handleChange);
-//  };
-
-//  const observer = createObserver(handleAdded, handleRemoved);
-//  observer.observe(document.querySelector("#react-root"), { subtree: true, childList: true });
+  const search = document.querySelector('[data-testid=SearchBox_Search_Input]');
+  search.addEventListener('input', handleChange);
+  search.addEventListener('change', handleChange);
+  search.addEventListener('keydown', handleKeyDown);
 })();
